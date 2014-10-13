@@ -63,7 +63,7 @@ A popup help display window on how to use.
 	global $csv_accum;
 	echo $field;
 	$field = strip_tags($field);
-	$field = ereg_replace (",","",$field);
+	$field = str_replace (",","",$field);
 	if ($csv_accum=='') $csv_accum=$field; 
 	else 
 	{if (strrpos($csv_accum,chr(10)) == (strlen($csv_accum)-1)) $csv_accum .= $field;
@@ -75,6 +75,31 @@ A popup help display window on how to use.
 if (isset($_GET['help'])){ 
   echo TEXT_HELP;
   exit;
+}
+
+if (isset($_POST['help'])){ 
+  echo TEXT_HELP;
+  exit;
+}
+
+if($_GET['status'] != ''){
+    $get_status = zen_db_prepare_input($_GET['status']);
+}
+if($_GET['print'] != ''){
+    $get_print = zen_db_prepare_input($_GET['print']);
+}
+if($_GET['invert'] != ''){
+    $get_invert = zen_db_prepare_input($_GET['invert']);
+}
+
+if($_POST['status'] != ''){
+    $get_status = zen_db_prepare_input($_POST['status']);
+}
+if($_POST['print'] != ''){
+    $get_print = zen_db_prepare_input($_POST['print']);
+}
+if($_POST['invert'] != ''){
+    $get_invert = zen_db_prepare_input($_POST['invert']);
 }
 
 // entry for bouncing csv string back as file
@@ -98,43 +123,77 @@ if ($_POST['csv']) $csv_string=$_POST['csv'];
 exit;
 }
 
+    //Zone Only SQL appendage
+    $zone_only_sql = '';
+    $zone_selected = false;
+    if ($_POST['zone_only'] != '' && !in_array('all', $_POST['zone_only'])) {
+        $get_zone_only = $_POST['zone_only'];
+        $zone_selected = true;
+        $zoned_sql = '';
+        foreach ($get_zone_only as $selectedZone) {
+            $zoned_sql .= "o.delivery_state LIKE '" . $selectedZone . "' OR ";
+        }
+        $zoned_sql = rtrim($zoned_sql, "OR ");
+        $zone_only_sql = " AND (" . $zoned_sql . ") ";
+    }
+    
 // entry for popup display of tax detail
 // show=ot_tax 
-if (isset($_GET['show'])) {
+if (isset($_GET['show']) || isset($_POST['show'])) {
 	$ot_type = zen_db_prepare_input($_GET['show']);
 	$sel_month = zen_db_prepare_input($_GET['month']);
 	$sel_year = zen_db_prepare_input($_GET['year']);
 	$sel_day = 0;
 	
 	if (isset($_GET['day'])) $sel_day = $_GET['day'];
+        
+        $ot_type = zen_db_prepare_input($_POST['show']);
+	$sel_month = zen_db_prepare_input($_POST['month']);
+	$sel_year = zen_db_prepare_input($_POST['year']);
+	$sel_day = 0;
+	
+	if (isset($_POST['day'])) $sel_day = $_POST['day'];
 	$status = '';
 	
-	if ($_GET['status']) $status = $_GET['status'];
+	if ($get_status) $status = $get_status;
 	// construct query for selected detail
 	$detail_query_raw = "SELECT ot.value amount, ot.title description, ot.orders_id ordernumber from " . TABLE_ORDERS . " o left join " . TABLE_ORDERS_TOTAL . " ot on (o.orders_id = ot.orders_id) WHERE ";
 	
 	if ($status<>'') $detail_query_raw .= "o.orders_status ='" . $status . "' AND ";
 	$detail_query_raw .= "ot.class = '" . $ot_type . "' AND month(o.date_purchased)= '" . $sel_month . "' AND year(o.date_purchased)= '" . $sel_year . "'";
-	
+	$detail_query_raw .= $zone_only_sql;
 	if ($sel_day<>0) $detail_query_raw .= " AND dayofmonth(o.date_purchased) = '" . $sel_day . "'";
 	// $detail_query_raw .= " group by ot.title";
 
-	$detail_query = mysql_query($detail_query_raw);
+	$detail_query = $db->Execute($detail_query_raw);
 
-	echo "<!doctype html public \"-//W3C//DTD HTML 4.01 Transitional//EN\"><html " . HTML_PARAMS . "><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=" . CHARSET . "\">" . "<title>" . TEXT_DETAIL . "</title><link rel=\"stylesheet\" type=\"text/css\" href=\"includes/stylesheet.css\"></head><body><br><table width=\"80%\" align=center><caption align=center>";
+	echo "<!doctype html public \"-//W3C//DTD HTML 4.01 Transitional//EN\"><html " . HTML_PARAMS . "><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=" . CHARSET ;?> "> <?php echo "<title>" . TEXT_DETAIL . "</title><link rel=\"stylesheet\" type=\"text/css\" href=\"includes/stylesheet.css\"></head><body><br><table width=\"80%\" align=center><caption align=center>";
 
 	if ($sel_day<>0) echo $sel_day . " Day - " ;
 	echo $sel_year . " Year - " . $sel_month . " Month";
 
 	if ($status<>'') echo "<br>" . HEADING_TITLE_STATUS . ":" . "&nbsp;" . $status;
 	echo "</caption>";
- 	
-	while ($detail_line = mysql_fetch_array($detail_query)) {
-	echo "<tr class=dataTableRow><td align=left width='45%'>Order #: " . $detail_line['ordernumber'] . "</td><td align=right>" . $detail_line['description'] . "&nbsp;</td><td align=right>" . number_format($detail_line['amount'],3) . "</td></tr>";}
+ 	$detail_line = $detail_query;
+	while (!$detail_line->EOF) {
+	echo "<tr class=dataTableRow><td align=left width='45%'>Order #: " . $detail_line->fields['ordernumber'] . "</td><td align=right>" . $detail_line->fields['description'] . "&nbsp;</td><td align=right>" . number_format($detail_line->fields['amount'],3) . "</td></tr>";
+        $detail_line->MoveNext();
+        }
 	echo "</table></body>";
 exit;
 }
 
+    //Array of States
+    $state_list = $db->Execute("SELECT DISTINCT delivery_state FROM " . TABLE_ORDERS . " ORDER BY delivery_state");
+    $state_array[] = array('id' => 'all',
+        'text' => 'all');
+    while (!$state_list->EOF) {
+        if ($state_list->fields['delivery_state'] != '') {
+            $state_array[] = array('id' => $state_list->fields['delivery_state'],
+                'text' => $state_list->fields['delivery_state']);
+        }
+        $state_list->MoveNext();
+    }
 //
 // main entry for report display
 ?>
@@ -161,14 +220,23 @@ exit;
   }
   // -->
 </script>
-
+<style>
+  .dataTableContent  input[type="submit"]
+{
+    background:none; 
+    border-width:0px; 
+    color:blue;
+  background: transparent;
+  cursor: pointer;
+}
+</style>
 </head>
 <body onload="init()">
 <?php
 // set printer-friendly toggle
-(zen_db_prepare_input($_GET['print']=='yes')) ? $print=true : $print=false;
+(zen_db_prepare_input($get_print=='yes')) ? $print=true : $print=false;
 // set inversion toggle
-(zen_db_prepare_input($_GET['invert']=='yes')) ? $invert=true : $invert=false;
+(zen_db_prepare_input($get_invert=='yes')) ? $invert=true : $invert=false;
 ?>
 <!-- header //-->
 <?php
@@ -200,18 +268,10 @@ $sel_month = 0;
 	$sel_month = zen_db_prepare_input($_GET['month']);
 	$sel_year = zen_db_prepare_input($_GET['year']);
 	}
-        $zone_only_sql = '';
-        
-$zone_selected = false;
-if ($_POST['zone_only']) {
-                                            $get_zone_only = $_POST['zone_only'];
-    $zone_selected = true;
-    foreach ($get_zone_only as $selectedZone) {
-        $zoned_sql .= "o.delivery_state LIKE '" . $selectedZone . "' OR ";
-    }
-    $zoned_sql = rtrim($zoned_sql, "OR ");
-    $zone_only_sql = " AND (" . $zoned_sql . ") ";
-}
+        if ($_POST['month'] && $_POST['year']) {
+	$sel_month = zen_db_prepare_input($_POST['month']);
+	$sel_year = zen_db_prepare_input($_POST['year']);
+	}
 
 // get list of orders_status names for dropdown selection
   $orders_statuses = array();
@@ -227,17 +287,20 @@ if ($_POST['zone_only']) {
   }
 // name of status selection
 $orders_status_text = TEXT_ALL_ORDERS;
-if ($_GET['status']) {
-  $status = zen_db_prepare_input($_GET['status']);
-  $orders_status_query = mysql_query("SELECT orders_status_name from " . TABLE_ORDERS_STATUS . " WHERE language_id = '" . $languages_id . "' AND orders_status_id =" . $status);
-  while ($orders_status = mysql_fetch_array($orders_status_query)) {
-	  $orders_status_text = $orders_status['orders_status_name'];}
+if ($get_status) {
+  $status = zen_db_prepare_input($get_status);
+  $orders_status_query = $db->Execute("SELECT orders_status_name from " . TABLE_ORDERS_STATUS . " WHERE language_id = '" . $languages_id . "' AND orders_status_id =" . $status.$zone_only_sql);
+ $orders_status = $orders_status_query;
+  while (!$orders_status->EOF) {
+	  $orders_status_text = $orders_status->fields['orders_status_name'];
+          
+  }
 				}
 if (!$print) { ?>
 			<td align="right">
 			<table border="0" width="100%" cellspacing="0" cellpadding="0">
 			  <tr><td class="smallText" align="right">
-				<?php echo zen_draw_form('status', FILENAME_STATS_MONTHLY_SALES, '', 'get');
+				<?php echo zen_draw_form('status', FILENAME_STATS_MONTHLY_SALES, '', 'POST');
 			 	// get list of orders_status names for dropdown selection
 				    $orders_statuses = array();
   $orders_status_array = array();
@@ -259,19 +322,23 @@ if (!$print) { ?>
 				echo '<select name="zone_only[]" multiple="multiple" size="7">';
     foreach ($state_array as $state) {
         $selected_multi_zone = '';
-        if ($state == 'all' || $zone_selected == false) {
-            $selected_multi_zone = 'selected="selected"';
-        }
-        if (in_array($state['text'], $_POST['zone_only']) || $state['text'] == $_POST['zone_only']) {
-            $selected_multi_zone = 'selected="selected"';
+        if(isset($_POST['zone_only'])){
+            if ((in_array('all', $_POST['zone_only']) || $zone_selected == false) && $state['text'] == 'all') {
+                $selected_multi_zone = 'selected="selected"';
+            }
+            if (in_array($state['text'], $_POST['zone_only']) || $state['text'] == $_POST['zone_only']) {
+                $selected_multi_zone = 'selected="selected"';
+            }
         }
         echo '<option value="' . $state['text'] . '" ' . $selected_multi_zone . ' >' . $state['text'] . '</option>';
     }
     echo '</select>';
     echo '<input type="submit" value="Filter">';
+    echo '</form>';
                                         ?>
+                                
 				</td>
-              </form></tr>
+              </tr>
              </table>
 			 </td>
 <?php		} 
@@ -311,22 +378,22 @@ row for buttons to print, save, and help
 				<?php  // back button if monthly detail
 				if ($sel_month<>0)	 {
 				echo "<a href='" . $_SERVER['PHP_SELF'] . "?&selected_box=reports";
-				if (isset($_GET['status'])) echo "&status=" . $status;
-				if (isset($_GET['invert'])) echo "&invert=yes";
-				echo "' title='" . TEXT_BUTTON_REPORT_BACK_DESC . "'>" . TEXT_BUTTON_REPORT_BACK . "</a>";
+				if (isset($get_status)) echo "&status=" . $status;
+				if (isset($get_invert)) echo "&invert=yes";
+				echo "' title='" . TEXT_BUTTON_REPORT_BACK_DESC ;?> "> <?php echo TEXT_BUTTON_REPORT_BACK . "</a>";
 				}
 				?>
 				</td>
 				<td class="smallText"><a href="<?php  
 				echo $_SERVER['PHP_SELF'] . "?" . $_SERVER['QUERY_STRING'] . "&print=yes";
-				?>" target="print" title="<?php echo TEXT_BUTTON_REPORT_PRINT_DESC . "\">" . TEXT_BUTTON_REPORT_PRINT; ?></a>
+				?>" target="print" title="<?php echo TEXT_BUTTON_REPORT_PRINT_DESC ;?> "> <?php echo TEXT_BUTTON_REPORT_PRINT; ?></a>
 				</td>
-				<td class="smallText"><a href='<?php echo $_SERVER['PHP_SELF'] . "?" . ereg_replace('&invert=yes','',$_SERVER['QUERY_STRING']);
-				if (!$invert) echo "&invert=yes";
-				echo "' title= '" . TEXT_BUTTON_REPORT_INVERT_DESC . "'>" . TEXT_BUTTON_REPORT_INVERT; ?></a>
+				<td class="smallText"><a href="<?php echo $_SERVER['PHP_SELF'] . "?" . str_replace('&invert=yes','',$_SERVER['QUERY_STRING']);
+				if (!$invert) echo "&invert=yes";?>
+				" title=" <?php echo TEXT_BUTTON_REPORT_INVERT_DESC ;?> "> <?php echo TEXT_BUTTON_REPORT_INVERT; ?></a>
 				</td>
 				<td class="smallText"><a href="#" onClick="window.open('<?php  
-				echo $_SERVER['PHP_SELF'] . "?&help=yes";	?>','help',config='height=400,width=600,scrollbars=1, resizable=1')" title="<?php echo TEXT_BUTTON_REPORT_HELP_DESC . "\">" . TEXT_BUTTON_REPORT_HELP; ?></a>
+				echo $_SERVER['PHP_SELF'] . "?&help=yes";	?>','help',config='height=400,width=600,scrollbars=1, resizable=1')" title="<?php echo TEXT_BUTTON_REPORT_HELP_DESC ;?> "> <?php echo TEXT_BUTTON_REPORT_HELP; ?></a>
 				</td>
 				</tr></table>
 				</td>
@@ -336,10 +403,10 @@ row for buttons to print, save, and help
 // determine if loworder fee is enabled in configuration, include/omit the column
 $loworder_query_raw = "SELECT configuration_value from " . TABLE_CONFIGURATION . " WHERE configuration_key =" . "'MODULE_ORDER_TOTAL_LOWORDERFEE_LOW_ORDER_FEE'";
 $loworder = false;
-$loworder_query = mysql_query($loworder_query_raw);
-if (mysql_num_rows($loworder_query)>0) {
-	$low_setting=mysql_fetch_array($loworder_query);
-	if ($low_setting['configuration_value']=='true') $loworder=true;
+$loworder_query = $db->Execute($loworder_query_raw);
+if ($loworder_query->RecordCount()>0) {
+	$low_setting=$loworder_query;
+	if ($low_setting->fields['configuration_value']=='true') $loworder=true;
 }
 //
 // if there are extended class values in orders_table
@@ -351,8 +418,8 @@ $class_val_loworder = "'ot_loworderfee'";
 $class_val_total = "'ot_total'";
 	$extra_class_query_raw = "SELECT value from " . TABLE_ORDERS_TOTAL . " WHERE class <> " . $class_val_subtotal . " AND class <>" . $class_val_tax . " AND class <>" . $class_val_shiphndl . " AND class <>" . $class_val_loworder . " AND class <>" . $class_val_total;
 	$extra_class = false;
-	$extra_class_query = mysql_query($extra_class_query_raw);
-	if (mysql_num_rows($extra_class_query)>0) $extra_class = true;
+	$extra_class_query = $db->Execute($extra_class_query_raw);
+	if ($extra_class_query->RecordCount()>0) $extra_class = true;
 // start accumulator for the report content mirrored in CSV
 $csv_accum = '';
 ?>
@@ -401,35 +468,36 @@ $csv_accum .= "\n";
 // order totals, the driving force 
 $status = '';
 $sales_query_raw = "SELECT sum(ot.value) gross_sales, monthname(o.date_purchased) row_month, year(o.date_purchased) row_year, month(o.date_purchased) i_month, dayofmonth(o.date_purchased) row_day  from " . TABLE_ORDERS . " o left join " . TABLE_ORDERS_TOTAL . " ot on (o.orders_id = ot.orders_id) WHERE ";
-if ($_GET['status']) {
-  $status = zen_db_prepare_input($_GET['status']);
+if ($get_status) {
+  $status = zen_db_prepare_input($get_status);
   $sales_query_raw .= "o.orders_status =" . $status . " AND ";
 	}
 $sales_query_raw .= "ot.class = " . $class_val_total;
+$sales_query_raw .= $zone_only_sql;
 if ($sel_month<>0) $sales_query_raw .= " AND month(o.date_purchased) = " . $sel_month;
 $sales_query_raw .= " group by year(o.date_purchased), month(o.date_purchased)";
 if ($sel_month<>0) $sales_query_raw .= ", dayofmonth(o.date_purchased)";
 $sales_query_raw .=  " order by o.date_purchased ";
 if ($invert) $sales_query_raw .= "asc"; else $sales_query_raw .= "desc";
-$sales_query_raw .= $zone_only_sql;
-$sales_query = mysql_query($sales_query_raw);
-$num_rows = mysql_num_rows($sales_query);
+$sales_query = $db->Execute($sales_query_raw);
+$num_rows = $sales_query->RecordCount;
 if ($num_rows==0) echo '<tr><td class="smalltext">' . TEXT_NOTHING_FOUND . '</td></tr>';
 $rows=0;
 //
 // loop here for each row reported
-while ($sales = mysql_fetch_array($sales_query)) {
+$sales = $sales_query;
+while (!$sales->EOF) {
 	$rows++;
-	if ($rows>1 && $sales['row_year']<>$last_row_year) {  // emit annual footer
+	if ($rows>1 && $sales->fields['row_year']<>$last_row_year) {  // emit annual footer
 ?>
 <tr class="dataTableHeadingRow">
 <td class="dataTableHeadingContent" align="left">
 <?php 
-	if ($sales['row_year']==date("Y")) mirror_out(TABLE_FOOTER_YTD); 
+	if ($sales->fields['row_year']==date("Y")) mirror_out(TABLE_FOOTER_YTD); 
 	else 
 		if ($sel_month==0) mirror_out(TABLE_FOOTER_YEAR);
 		else
-			mirror_out(strtoupper(substr($sales['row_month'],0,3)));
+			mirror_out(strtoupper(substr($sales->fields['row_month'],0,3)));
 ?>
 </td>
 <td class="dataTableHeadingContent" align="left">
@@ -489,56 +557,56 @@ $net_sales_query_raw = "SELECT sum( op.final_price * op.products_quantity ) net_
 
 if ($status<>'') $net_sales_query_raw .= " o.orders_status ='" . $status . "' AND ";
 
-$net_sales_query_raw .= " o.date_purchased BETWEEN '" . $sales['row_year'] . "-" . $sales['i_month'] . "-01' AND '" . $sales['row_year'] . "-" . $sales['i_month'] . "-31 23:59'";
+$net_sales_query_raw .= " o.date_purchased BETWEEN '" . $sales->fields['row_year'] . "-" . $sales->fields['i_month'] . "-01' AND '" . $sales->fields['row_year'] . "-" . $sales->fields['i_month'] . "-31 23:59'".$zone_only_sql;
 
-if ($sel_month<>0) $net_sales_query_raw .= " AND dayofmonth(o.date_purchased) = '" . $sales['row_day'] . "'";
+if ($sel_month<>0) $net_sales_query_raw .= " AND dayofmonth(o.date_purchased) = '" . $sales->fields['row_day'] . "'";
 
-$net_sales_query = mysql_query($net_sales_query_raw);
+$net_sales_query = $db->Execute($net_sales_query_raw);
 $net_sales_this_row = 0;
-if (mysql_num_rows($net_sales_query) > 0)
-	$zero_rated_sales_this_row = mysql_fetch_array($net_sales_query);
+if ($net_sales_query->RecordCount() > 0)
+	$zero_rated_sales_this_row = $net_sales_query;
 
 // Retrieve totals for products that are NOT zero VAT rated
 $net_sales_query_raw = "SELECT sum(op.final_price * op.products_quantity) net_sales, sum(op.final_price * op.products_quantity * (1 + (op.products_tax / 100.0))) gross_sales, sum((op.final_price * op.products_quantity * (1 + (op.products_tax / 100.0))) - (op.final_price * op.products_quantity)) tax FROM " . TABLE_ORDERS . " o INNER JOIN " . TABLE_ORDERS_PRODUCTS . " op ON (o.orders_id = op.orders_id) WHERE op.products_tax <> 0 AND ";
 if ($status<>'') $net_sales_query_raw .= "o.orders_status ='" . $status . "' AND ";
-$net_sales_query_raw .= " o.date_purchased BETWEEN '" . $sales['row_year'] . "-" . $sales['i_month'] . "-01' AND '" . $sales['row_year'] . "-" . $sales['i_month'] . "-31 23:59'";
-if ($sel_month<>0) $net_sales_query_raw .= " AND dayofmonth(o.date_purchased) = '" . $sales['row_day'] . "'";
+$net_sales_query_raw .= " o.date_purchased BETWEEN '" . $sales->fields['row_year'] . "-" . $sales->fields['i_month'] . "-01' AND '" . $sales->fields['row_year'] . "-" . $sales->fields['i_month'] . "-31 23:59'".$zone_only_sql;
+if ($sel_month<>0) $net_sales_query_raw .= " AND dayofmonth(o.date_purchased) = '" . $sales->fields['row_day'] . "'";
 
-$net_sales_query = mysql_query($net_sales_query_raw);
+$net_sales_query = $db->Execute($net_sales_query_raw);
 $net_sales_this_row = 0;
-if (mysql_num_rows($net_sales_query) > 0)
-	$net_sales_this_row = mysql_fetch_array($net_sales_query);
+if ($net_sales_query->RecordCount() > 0)
+	$net_sales_this_row = $net_sales_query;
 
 // Total tax. This is needed so we can calculate any tax that has been added to the postage
 $tax_coll_query_raw = "SELECT sum(ot.value) tax_coll FROM " . TABLE_ORDERS . " o INNER JOIN " . TABLE_ORDERS_TOTAL . " ot ON (o.orders_id = ot.orders_id) WHERE ";
 if ($status<>'') $tax_coll_query_raw .= "o.orders_status ='" . $status . "' AND ";
-$tax_coll_query_raw .= "ot.class = " . $class_val_tax . " AND o.date_purchased BETWEEN '" . $sales['row_year'] . "-" . $sales['i_month'] . "-01' AND '" . $sales['row_year'] . "-" . $sales['i_month'] . "-31 23:59'";
-if ($sel_month<>0) $tax_coll_query_raw .= " AND dayofmonth(o.date_purchased) = '" . $sales['row_day'] . "'";
-$tax_coll_query = mysql_query($tax_coll_query_raw);
+$tax_coll_query_raw .= "ot.class = " . $class_val_tax . " AND o.date_purchased BETWEEN '" . $sales->fields['row_year'] . "-" . $sales->fields['i_month'] . "-01' AND '" . $sales->fields['row_year'] . "-" . $sales->fields['i_month'] . "-31 23:59'".$zone_only_sql;
+if ($sel_month<>0) $tax_coll_query_raw .= " AND dayofmonth(o.date_purchased) = '" . $sales->fields['row_day'] . "'";
+$tax_coll_query = $db->Execute($tax_coll_query_raw);
 $tax_this_row = 0;
-if (mysql_num_rows($tax_coll_query)>0)	
-	$tax_this_row = mysql_fetch_array($tax_coll_query);
+if ($tax_coll_query->RecordCount()>0)	
+	$tax_this_row = $tax_coll_query;
 
 // shipping AND handling charges for row
 $shiphndl_query_raw = "SELECT sum(ot.value) shiphndl from " . TABLE_ORDERS . " o INNER JOIN " . TABLE_ORDERS_TOTAL . " ot ON (o.orders_id = ot.orders_id) WHERE ";
 if ($status<>'') $shiphndl_query_raw .= "o.orders_status ='" . $status . "' AND ";
-$shiphndl_query_raw .= "ot.class = " . $class_val_shiphndl . " AND o.date_purchased BETWEEN '" . $sales['row_year'] . "-" . $sales['i_month'] . "-01' AND '" . $sales['row_year'] . "-" . $sales['i_month'] . "-31 23:59'";
-if ($sel_month<>0) $shiphndl_query_raw .= " AND dayofmonth(o.date_purchased) = '" . $sales['row_day'] . "'";
-$shiphndl_query = mysql_query($shiphndl_query_raw);
+$shiphndl_query_raw .= "ot.class = " . $class_val_shiphndl . " AND o.date_purchased BETWEEN '" . $sales->fields['row_year'] . "-" . $sales->fields['i_month'] . "-01' AND '" . $sales->fields['row_year'] . "-" . $sales->fields['i_month'] . "-31 23:59'".$zone_only_sql;
+if ($sel_month<>0) $shiphndl_query_raw .= " AND dayofmonth(o.date_purchased) = '" . $sales->fields['row_day'] . "'";
+$shiphndl_query = $db->Execute($shiphndl_query_raw);
 $shiphndl_this_row = 0;
-if (mysql_num_rows($shiphndl_query)>0)	
-	$shiphndl_this_row = mysql_fetch_array($shiphndl_query);
+if ($shiphndl_query->RecordCount()>0)	
+	$shiphndl_this_row = $shiphndl_query;
 
 // low order fees for row
 $loworder_this_row = 0;
 if ($loworder) {
 	$loworder_query_raw = "SELECT sum(ot.value) loworder from " . TABLE_ORDERS . " o INNER JOIN " . TABLE_ORDERS_TOTAL . " ot ON (o.orders_id = ot.orders_id) WHERE ";
 	if ($status<>'') $loworder_query_raw .= "o.orders_status ='" . $status . "' AND ";
-	$loworder_query_raw .= "ot.class = " . $class_val_loworder . " AND o.date_purchased BETWEEN '" . $sales['row_year'] . "-" . $sales['i_month'] . "-01' AND '" . $sales['row_year'] . "-" . $sales['i_month'] . "-31 23:59'";
-	if ($sel_month<>0) $loworder_query_raw .= " AND dayofmonth(o.date_purchased) = '" . $sales['row_day'] . "'";
-	$loworder_query = mysql_query($loworder_query_raw);
-	if (mysql_num_rows($loworder_query)>0)	
-	$loworder_this_row = mysql_fetch_array($loworder_query);
+	$loworder_query_raw .= "ot.class = " . $class_val_loworder . " AND o.date_purchased BETWEEN '" . $sales->fields['row_year'] . "-" . $sales->fields['i_month'] . "-01' AND '" . $sales->fields['row_year'] . "-" . $sales->fields['i_month'] . "-31 23:59'".$zone_only_sql;
+	if ($sel_month<>0) $loworder_query_raw .= " AND dayofmonth(o.date_purchased) = '" . $sales->fields['row_day'] . "'";
+	$loworder_query = $db->Exccute($loworder_query_raw);
+	if ($loworder_query->RecordCount()>0)	
+	$loworder_this_row = $loworder_query;
 }
 
 // additional column if extra class value in orders_total table
@@ -546,73 +614,103 @@ $other_this_row = 0;
 if ($extra_class) { 
 	$other_query_raw = "SELECT sum(ot.value) other from " . TABLE_ORDERS . " o INNER JOIN " . TABLE_ORDERS_TOTAL . " ot ON (o.orders_id = ot.orders_id) WHERE ";
 	if ($status<>'') $other_query_raw .= "o.orders_status ='" . $status . "' AND ";
-	$other_query_raw .= "ot.class <> " . $class_val_subtotal . " AND class <> " . $class_val_tax . " AND class <> " . $class_val_shiphndl . " AND class <> " . $class_val_loworder . " AND class <> " . $class_val_total . " AND o.date_purchased BETWEEN '" . $sales['row_year'] . "-" . $sales['i_month'] . "-01' AND '" . $sales['row_year'] . "-" . $sales['i_month'] . "-31 23:59'";
-	if ($sel_month<>0) $other_query_raw .= " AND dayofmonth(o.date_purchased) = '" . $sales['row_day'] . "'";
-	$other_query = mysql_query($other_query_raw);
-	if (mysql_num_rows($other_query)>0)	
-	$other_this_row = mysql_fetch_array($other_query);
+	$other_query_raw .= "ot.class <> " . $class_val_subtotal . " AND class <> " . $class_val_tax . " AND class <> " . $class_val_shiphndl . " AND class <> " . $class_val_loworder . " AND class <> " . $class_val_total . " AND o.date_purchased BETWEEN '" . $sales->fields['row_year'] . "-" . $sales->fields['i_month'] . "-01' AND '" . $sales->fields['row_year'] . "-" . $sales->fields['i_month'] . "-31 23:59'".$zone_only_sql;
+	if ($sel_month<>0) $other_query_raw .= " AND dayofmonth(o.date_purchased) = '" . $sales->fields['row_day'] . "'";
+	$other_query = $db->Execute($other_query_raw);
+	if ($other_query->RecordCount()>0)	
+	$other_this_row = $other_query;
 	}
 
 // Correct any rounding errors
-	$net_sales_this_row['net_sales'] = (floor(($net_sales_this_row['net_sales'] * 100) + 0.5)) / 100;
-	$net_sales_this_row['tax'] = (floor(($net_sales_this_row['tax'] * 100) + 0.5)) / 100;
-	$zero_rated_sales_this_row['net_sales'] = (floor(($zero_rated_sales_this_row['net_sales'] * 100) + 0.5)) / 100;
-	$tax_this_row['tax_coll'] = (floor(($tax_this_row['tax_coll'] * 100) + 0.5)) / 100;
+	$net_sales_this_row->fields['net_sales'] = (floor(($net_sales_this_row->fields['net_sales'] * 100) + 0.5)) / 100;
+	$net_sales_this_row->fields['tax'] = (floor(($net_sales_this_row->fields['tax'] * 100) + 0.5)) / 100;
+	$zero_rated_sales_this_row->fields['net_sales'] = (floor(($zero_rated_sales_this_row->fields['net_sales'] * 100) + 0.5)) / 100;
+	$tax_this_row->fields['tax_coll'] = (floor(($tax_this_row->fields['tax_coll'] * 100) + 0.5)) / 100;
 
 // accumulate row results in footer
-	$footer_gross += $sales['gross_sales']; // Gross Income
-	$footer_sales += $net_sales_this_row['net_sales'] + $zero_rated_sales_this_row['net_sales']; // Product Sales
-	$footer_sales_nontaxed += $zero_rated_sales_this_row['net_sales']; // Nontaxed Sales
-	$footer_sales_taxed += $net_sales_this_row['net_sales']; // Taxed Sales
-	$footer_tax_coll += $net_sales_this_row['tax']; // Taxes Collected
-	$footer_shiphndl += $shiphndl_this_row['shiphndl']; // Shipping & handling
-        $footer_shipping_tax += ($tax_this_row['tax_coll'] - $net_sales_this_row['tax']); // Shipping Tax
-	$footer_loworder += $loworder_this_row['loworder'];
-	if ($extra_class) $footer_other += $other_this_row['other'];
+	$footer_gross += $sales->fields['gross_sales']; // Gross Income
+	$footer_sales += $net_sales_this_row->fields['net_sales'] + $zero_rated_sales_this_row->fields['net_sales']; // Product Sales
+	$footer_sales_nontaxed += $zero_rated_sales_this_row->fields['net_sales']; // Nontaxed Sales
+	$footer_sales_taxed += $net_sales_this_row->fields['net_sales']; // Taxed Sales
+	$footer_tax_coll += $net_sales_this_row->fields['tax']; // Taxes Collected
+	$footer_shiphndl += $tax_this_row->fields['shiphndl']; // Shipping & handling
+        $footer_shipping_tax += ($tax_this_row->fields['tax_coll'] - $net_sales_this_row->fields['tax']); // Shipping Tax
+	$footer_loworder += $loworder_this_row->fields['loworder'];
+	if ($extra_class) $footer_other += $other_this_row->fields['other'];
 ?>
 <tr class="dataTableRow">
 <td class="dataTableContent" align="left">
 	<?php  // live link to report monthly detail
 		if ($sel_month == 0	&& !$print) {
-			echo "<a href='" . $_SERVER['PHP_SELF'] . "?" . $_SERVER['QUERY_STRING'] . "&month=" . $sales['i_month'] . "&year=" . $sales['row_year'] . "' title='" . TEXT_BUTTON_REPORT_GET_DETAIL . "'>";
+                    echo zen_draw_form('month', FILENAME_STATS_MONTHLY_SALES, '', 'POST');
+                    foreach($_POST as $field=>$post){
+                            if($field != 'zone_only'){
+                            echo zen_draw_hidden_field($field, $post);
+                            }
+                        }
+                        if(is_array($_POST['zone_only'])){
+                            foreach($_POST['zone_only'] as $zones){
+                                echo zen_draw_hidden_field('zone_only[]', $zones);
+                            }
+                        }
+                        else{
+                            echo zen_draw_hidden_field('zone_only[]', $_POST['zone_only']);
+                        }
+                    echo zen_draw_hidden_field('month', $sales->fields['i_month']);
+                    echo zen_draw_hidden_field('year', $sales->fields['row_year']);
+                    echo '<input type="submit" value="'.$sales->fields['row_month'].'">';
+                    echo '</form>';
 		}
-	mirror_out(substr($sales['row_month'],0,3)); 
-		if ($sel_month == 0 && !$print) echo '</a>';
 	?>
 </td>
 <td class="dataTableContent" align="left">
 	<?php 
-		if ($sel_month==0) mirror_out($sales['row_year']);
-			else mirror_out($sales['row_day']);
-		$last_row_year = $sales['row_year']; // save this row's year to check for annual footer
+		if ($sel_month==0) mirror_out($sales->fields['row_year']);
+			else mirror_out($sales->fields['row_day']);
+		$last_row_year = $sales->fields['row_year']; // save this row's year to check for annual footer
 	?>
 </td>
-<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($sales['gross_sales'],2)); ?></td>
-<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($net_sales_this_row['net_sales'] + $zero_rated_sales_this_row['net_sales'],2)); ?></td>
-<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($zero_rated_sales_this_row['net_sales'],2)); ?></td>
-<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($net_sales_this_row['net_sales'],2)); ?></td>
+<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($sales->fields['gross_sales'],2)); ?></td>
+<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($net_sales_this_row->fields['net_sales'] + $zero_rated_sales_this_row->fields['net_sales'],2)); ?></td>
+<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($zero_rated_sales_this_row->fields['net_sales'],2)); ?></td>
+<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($net_sales_this_row->fields['net_sales'],2)); ?></td>
 <td class="dataTableContent" width='70' align="right">
 	<?php 
 		// make this a link to the detail popup if nonzero
-		if (!$print && ($net_sales_this_row['tax']>0)) {
-			echo "<a href=\"#\" onClick=\"window.open('" . $_SERVER['PHP_SELF'] . "?&show=ot_tax&year=" . $sales['row_year'] . "&month=" . $sales['i_month'];
-			if ($sel_month<>0) echo "&day=" . $sales['row_day'];
-			if ($status<>'') echo "&status=" . $status;
-			echo "','detail',config='height=200,width=400,scrollbars=1, resizable=1')\" title=\"Show detail\">";
+		if (!$print && ($net_sales_this_row->fields['tax']>0)) {
+                        echo zen_draw_form('day', FILENAME_STATS_MONTHLY_SALES, " ", 'POST','target="_blank"');
+                        foreach($_POST as $field=>$post){
+                            if($field != 'zone_only'){
+                            echo zen_draw_hidden_field($field, $post);
+                            }
+                        }
+                        if(is_array($_POST['zone_only'])){
+                            foreach($_POST['zone_only'] as $zones){
+                                echo zen_draw_hidden_field('zone_only[]', $zones);
+                            }
+                        }
+                        else{
+                            echo zen_draw_hidden_field('zone_only[]', $_POST['zone_only']);
+                        }
+                        echo zen_draw_hidden_field('month', $sales->fields['i_month']);
+                        echo zen_draw_hidden_field('year', $sales->fields['row_year']);
+                        echo zen_draw_hidden_field('show', 'ot_tax');
+                        echo zen_draw_hidden_field('day', $sales->fields['row_day']);
+                        echo '<input type="submit" value="'.number_format($net_sales_this_row->fields['tax'],2).'">';
+                        echo '</form>';
+			
 		}
-	mirror_out(number_format($net_sales_this_row['tax'],2)); 
-		if (!$print && $net_sales_this_row['tax']>0) echo "</a>";
 	?>
 </td>
-<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($shiphndl_this_row['shiphndl'],2)); ?></td>
-<td class="dataTableContent" width='70' align="right"><?php $sh_tax = $tax_this_row['tax_coll'] - $net_sales_this_row['tax']; mirror_out(number_format(($sh_tax <= 0) ? 0 : $sh_tax,2)); ?></td>
+<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($tax_this_row->fields['shiphndl'],2)); ?></td>
+<td class="dataTableContent" width='70' align="right"><?php $sh_tax = $tax_this_row->fields['tax_coll'] - $net_sales_this_row->fields['tax']; mirror_out(number_format(($sh_tax <= 0) ? 0 : $sh_tax,2)); ?></td>
 	<?php if ($loworder) { ?>
-		<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($loworder_this_row['loworder'],2)); ?></td>
+		<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($loworder_this_row->fields['loworder'],2)); ?></td>
 	<?php } 
 	?>
 	<?php
 	if ($extra_class) { ?>
-		<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($other_this_row['other'],2)); ?></td>
+		<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($other_this_row->fields['other'],2)); ?></td>
 	<?php }
 	?>
 </tr>
@@ -627,14 +725,14 @@ if ($extra_class) {
 		<td class="dataTableHeadingContent" align="left">
 	<?php 
 		if ($sel_month<>0) 
-			mirror_out(strtoupper(substr($sales['row_month'],0,3)));
+			mirror_out(strtoupper(substr($sales->fields['row_month'],0,3)));
 		else
-			{if ($sales['row_year']==date("Y")) mirror_out(TABLE_FOOTER_YTD); 
+			{if ($sales->fields['row_year']==date("Y")) mirror_out(TABLE_FOOTER_YTD); 
 	 			else mirror_out(TABLE_FOOTER_YEAR);}
 	?>
 </td>
 <td class="dataTableHeadingContent" align="left">
-	<?php mirror_out($sales['row_year']); ?></td>
+	<?php mirror_out($sales->fields['row_year']); ?></td>
 <td class="dataTableHeadingContent" width='70' align="right">
 	<?php mirror_out(number_format($footer_gross,2)); ?>
 </td>
@@ -684,6 +782,7 @@ $csv_accum .= "\n";
 </tr>
 <?php 
 	}
+      $sales->MoveNext();  
    }  
 
 // done with report body
@@ -720,4 +819,4 @@ if ($num_rows>0 && !$print) {
 </html>
 <?php 
 require(DIR_WS_INCLUDES . 'application_bottom.php'); 
-?>
+var_dump($_POST);
