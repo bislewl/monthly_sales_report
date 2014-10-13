@@ -819,4 +819,4 @@ if ($num_rows>0 && !$print) {
 </html>
 <?php 
 require(DIR_WS_INCLUDES . 'application_bottom.php'); 
-var_dump($_POST);
+
