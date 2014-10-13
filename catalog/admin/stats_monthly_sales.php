@@ -480,7 +480,7 @@ if ($sel_month<>0) $sales_query_raw .= ", dayofmonth(o.date_purchased)";
 $sales_query_raw .=  " order by o.date_purchased ";
 if ($invert) $sales_query_raw .= "asc"; else $sales_query_raw .= "desc";
 $sales_query = $db->Execute($sales_query_raw);
-$num_rows = $sales_query->RecordCount;
+$num_rows = $sales_query->RecordCount();
 if ($num_rows==0) echo '<tr><td class="smalltext">' . TEXT_NOTHING_FOUND . '</td></tr>';
 $rows=0;
 //
@@ -653,12 +653,15 @@ if ($extra_class) {
                                 echo zen_draw_hidden_field('zone_only[]', $zones);
                             }
                         }
-                        else{
+                        elseif(isset($_POST['zone_only'])){
                             echo zen_draw_hidden_field('zone_only[]', $_POST['zone_only']);
                         }
                     echo zen_draw_hidden_field('month', $sales->fields['i_month']);
                     echo zen_draw_hidden_field('year', $sales->fields['row_year']);
                     echo '<input type="submit" value="'.$sales->fields['row_month'].'">';
+                    echo '<span style="display:none;">';
+                    mirror_out($sales->fields['row_month']);
+                    echo '</span>';
                     echo '</form>';
 		}
 	?>
@@ -689,7 +692,7 @@ if ($extra_class) {
                                 echo zen_draw_hidden_field('zone_only[]', $zones);
                             }
                         }
-                        else{
+                        elseif(isset($_POST['zone_only'])){
                             echo zen_draw_hidden_field('zone_only[]', $_POST['zone_only']);
                         }
                         echo zen_draw_hidden_field('month', $sales->fields['i_month']);
@@ -697,6 +700,9 @@ if ($extra_class) {
                         echo zen_draw_hidden_field('show', 'ot_tax');
                         echo zen_draw_hidden_field('day', $sales->fields['row_day']);
                         echo '<input type="submit" value="'.number_format($net_sales_this_row->fields['tax'],2).'">';
+                        echo '<span style="display:none;">';
+                        mirror_out(number_format($net_sales_this_row->fields['tax'],2));
+                        echo '</span>';
                         echo '</form>';
 			
 		}
@@ -819,4 +825,3 @@ if ($num_rows>0 && !$print) {
 </html>
 <?php 
 require(DIR_WS_INCLUDES . 'application_bottom.php'); 
-
