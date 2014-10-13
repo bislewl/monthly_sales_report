@@ -24,4 +24,4 @@ if (function_exists('zen_register_admin_page')) {
         zen_register_admin_page('stats_monthly_sales', 'BOX_STATS_SALES_TOTALS','FILENAME_STATS_MONTHLY_SALES', '', 'reports', 'Y', 17);
     }
 }
-?>
+unlink(__FILE__);
