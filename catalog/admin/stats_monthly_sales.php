@@ -633,7 +633,7 @@ if ($extra_class) {
 	$footer_sales_nontaxed += $zero_rated_sales_this_row->fields['net_sales']; // Nontaxed Sales
 	$footer_sales_taxed += $net_sales_this_row->fields['net_sales']; // Taxed Sales
 	$footer_tax_coll += $net_sales_this_row->fields['tax']; // Taxes Collected
-	$footer_shiphndl += $tax_this_row->fields['shiphndl']; // Shipping & handling
+	$footer_shiphndl += $shiphndl_this_row->fields['shiphndl']; // Shipping & handling
         $footer_shipping_tax += ($tax_this_row->fields['tax_coll'] - $net_sales_this_row->fields['tax']); // Shipping Tax
 	$footer_loworder += $loworder_this_row->fields['loworder'];
 	if ($extra_class) $footer_other += $other_this_row->fields['other'];
@@ -708,7 +708,7 @@ if ($extra_class) {
 		}
 	?>
 </td>
-<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($tax_this_row->fields['shiphndl'],2)); ?></td>
+<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($shiphndl_this_row->fields['shiphndl'],2)); ?></td>
 <td class="dataTableContent" width='70' align="right"><?php $sh_tax = $tax_this_row->fields['tax_coll'] - $net_sales_this_row->fields['tax']; mirror_out(number_format(($sh_tax <= 0) ? 0 : $sh_tax,2)); ?></td>
 	<?php if ($loworder) { ?>
 		<td class="dataTableContent" width='70' align="right"><?php mirror_out(number_format($loworder_this_row->fields['loworder'],2)); ?></td>
